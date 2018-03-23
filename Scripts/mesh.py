@@ -126,20 +126,20 @@ def display_mesh(triangles):
 def get_camera_projection(K, H):
 	p1 = np.hstack((K, np.dot(K, np.array([[0], [0], [-1]]))))
 
-	print(p1)
-	test = np.array([[.1, .1, 0, 1], [-.1, -.1, 0, 1], [.1, .1, 0, 1], [.1, .1, .2, 1]])
-	rtest = np.dot(p1, test.T)
-	rtest = rtest[0:2] / rtest[2]
-	print(rtest.T)
+	# print(p1)
+	# test = np.array([[.1, .1, 0, 1], [-.1, -.1, 0, 1], [.1, .1, 0, 1], [.1, .1, .2, 1]])
+	# rtest = np.dot(p1, test.T)
+	# rtest = rtest[0:2] / rtest[2]
+	# print(rtest.T)
 
-	print(H)
+	# print(H)
 
 	p2 = np.dot(H, p1)
 	A = np.dot(np.linalg.inv(K), p2[:,:3])
 	A = np.array([A[:, 0], A[:, 1], np.cross(A[:, 1], A[:, 0])]).T
 	p2[:, :3] = np.dot(K, A)
 
-	print(p2)
+	# print(p2)
 
 	return p2
 

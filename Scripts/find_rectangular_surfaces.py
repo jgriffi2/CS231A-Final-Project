@@ -9,110 +9,63 @@ import matplotlib.image as mpimg
 from skimage import io
 import math
 
+import mesh
 import quad
 
-def find_surfaces(img, projection_img, K=2, point_thresh=100, line_thresh=50, use_aspect_ratio=False):
+def find_surfaces(img, projection_img, K=2, point_thresh=100, line_thresh=200, use_aspect_ratio=False, project_mesh=False):
     projected_img = cv2.cvtColor(projection_img, cv2.COLOR_BGR2GRAY)
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     kernel = np.ones((5, 5), np.float32) / 25
     gray = cv2.filter2D(gray, -1, kernel)
     edges = cv2.Canny(gray, 50, 150, apertureSize=3)
 
-    # cv2.imwrite('edges.jpg', edges)
-
     lines = cv2.HoughLines(edges, 1, np.pi/180, 100)
     if (len(lines[0]) == 0):
         return gray
-
-    # for i in range(lines.shape[0]):
-    #     rho, theta = lines[i, 0]
-    #     a = np.cos(theta)
-    #     b = np.sin(theta)
-    #     x0 = a*rho
-    #     y0 = b*rho
-    #     x1 = int(x0 + 1000*(-b))
-    #     y1 = int(y0 + 1000*(a))
-    #     x2 = int(x0 - 1000*(-b))
-    #     y2 = int(y0 - 1000*(a))
-    #
-    #     cv2.line(img,(x1,y1),(x2,y2),(0,0,255),2)
-    #
-    # cv2.imwrite('hough_transform.jpg', img)
 
     suppressed_lines = non_max_suppression_lines(lines, line_thresh)
     if (len(suppressed_lines[0]) == 0):
         return gray
 
-    # for i in range(suppressed_lines.shape[0]):
-    #     rho, theta = suppressed_lines[i, 0]
-    #     a = np.cos(theta)
-    #     b = np.sin(theta)
-    #     x0 = a*rho
-    #     y0 = b*rho
-    #     x1 = int(x0 + 1000*(-b))
-    #     y1 = int(y0 + 1000*(a))
-    #     x2 = int(x0 - 1000*(-b))
-    #     y2 = int(y0 - 1000*(a))
-    #
-    #     cv2.line(img,(x1,y1),(x2,y2),(0,0,255),2)
-    #
-    # cv2.imwrite('suppressed_lines.jpg', img)
-
     segmented = segment_by_angle_kmeans(suppressed_lines, k=K)
-
-    # colors = [(0,0,255), (255,0,0)]
-    # for k in range(K):
-    #     for i in range(len(segmented[k])):
-    #         rho, theta = segmented[k][i][0]
-    #         a = np.cos(theta)
-    #         b = np.sin(theta)
-    #         x0 = a*rho
-    #         y0 = b*rho
-    #         x1 = int(x0 + 1000*(-b))
-    #         y1 = int(y0 + 1000*(a))
-    #         x2 = int(x0 - 1000*(-b))
-    #         y2 = int(y0 - 1000*(a))
-    #
-    #         cv2.line(img,(x1,y1),(x2,y2),colors[k],2)
-    #
-    # cv2.imwrite('segmented_lines.jpg', img)
 
     intersections = segmented_intersections(segmented)
     if (intersections.shape[0] < 4):
         return gray
-
-    # fig = plt.figure()
-    # ax = plt.subplot(111)
-    # ax.imshow(img, cmap='gray')
-    # ax.plot(intersections[:, 0], intersections[:, 1], 'ro')
-    # fig.savefig('intersections.jpg')
 
     legit_quads = quad.get_planes(intersections)
     if (len(legit_quads) == 0):
         return gray
 
     final_img = gray / np.max(gray)
-    # cv2.imwrite('warped_img.jpg', final_img)
     h, w = projected_img.shape
     for i in range(legit_quads.shape[0]):
         q = legit_quads[i]
-        H = find_transformation_matrix(q, 128, 128)
-        # if use_aspect_ratio:
-        #     ratio = quad.get_aspect_ratio(q, final_img)
-        #     new_h = int(w * ratio)
-        #     H = find_transformation_matrix(q, new_h, w)
-        #     pimg = np.copy(projected_img)
-        #     pimg.resize((new_h, w))
-        # else:
-        #     H = find_transformation_matrix(q, h, w)
-        #     pimg = projected_img
+        if use_aspect_ratio:
+            ratio = quad.get_aspect_ratio(q, final_img)
+            h = int(w * ratio)
+            pimg = np.copy(projected_img)
+            pimg = np.resize(pimg, (h, w))
+        else:
+            pimg = projected_img
 
-        warped_img = cv2.warpPerspective(projected_img, H, (img.shape[1], img.shape[0]), None, flags=cv2.INTER_NEAREST, borderMode=cv2.BORDER_CONSTANT)
+        H = find_transformation_matrix(q, h, w)
 
-        # cv2.imwrite('warped_img.jpg', warped_img)
-        final_img += warped_img / np.max(warped_img)
-        # final_img *= 255
-        # cv2.imwrite('warped_img.jpg', final_img)
+        if project_mesh:
+            if h < w:
+                cube = mesh.get_cube_mesh()
+            else:
+                cube = mesh.get_cube_mesh()
+            K = mesh.camera_calibration(h, w)
+            proj = mesh.get_camera_projection(K, H)
+            newpts = mesh.apply_projection(proj, cube)
+            plt.imshow(gray, cmap='gray')
+            mesh.display_mesh(newpts)
+            plt.show()
+
+        warped_img = cv2.warpPerspective(pimg, H, (img.shape[1], img.shape[0]), None, flags=cv2.INTER_NEAREST, borderMode=cv2.BORDER_CONSTANT)
+
+        final_img += warped_img /np.max(warped_img)
         break # TODO: breaking after first quad for testing purposes
 
     return final_img
